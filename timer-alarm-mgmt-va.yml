@@ -1,0 +1,152 @@
+# Set Timer/Alarm
+- spec:
+    name: set_timer
+    description: Set a timer or alarm in View Assist
+    parameters:
+      type: object
+      properties:
+        timer_type:
+          type: string
+          enum:
+            - Timer
+            - Alarm
+          description: Type of timer
+        duration_or_time:
+          type: string
+          description: Duration like "5 minutes" or time like "3 PM" or "tomorrow at 9 AM"
+        timer_name:
+          type: string
+          description: Optional name for the timer
+      required:
+        - timer_type
+        - duration_or_time
+  function:
+    type: script
+    sequence:
+      - action: view_assist.set_timer
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+          type: "{{ timer_type }}"
+          time: "{{ duration_or_time }}"
+          name: "{{ timer_name if timer_name is defined else '' }}"
+        response_variable: _function_result
+- spec:
+    name: list_my_timers
+    description: List all active timers
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.get_timers
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+        response_variable: _function_result
+
+        
+# Cancel Timer(s)
+- spec:
+    name: cancel_timer
+    description: Cancel the most recent timer
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.get_timers
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+        response_variable: timers
+      - if:
+          - condition: template
+            value_template: "{{ timers.result | length > 0 }}"
+        then:
+          - action: view_assist.cancel_timer
+            data:
+              timer_id: "{{ timers.result[0].id }}"
+            response_variable: _function_result
+        else:
+          - variables:
+              _function_result:
+                result: "No timers to cancel"
+
+# Show Timers
+- spec:
+    name: show_timers
+    description: Show timers on the display
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.navigate
+        data:
+          device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          path: "/view-assist/alarm"
+      - variables:
+          _function_result:
+            result: "Showing timers"
+# Snooze Timers
+- spec:
+    name: snooze_timer
+    description: Snooze the current alarm for 10 minutes
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.get_timers
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+          include_expired: true
+        response_variable: timers
+      - if:
+          - condition: template
+            value_template: "{{ timers.result | length > 0 }}"
+        then:
+          - action: view_assist.snooze_timer
+            data:
+              timer_id: "{{ timers.result[0].id }}"
+              time: "10 minutes"
+            response_variable: _function_result
+          - action: view_assist.cancel_sound_alarm
+            data:
+              entity_id: >-
+                {% set device_id = states('input_text.last_used_satellite_device_id') %}
+                {% set va_sensor = device_entities(device_id) | select('match', '^sensor\.') | list | first %}
+                {{ state_attr(va_sensor, 'mediaplayer_device') }}
+        else:
+          - variables:
+              _function_result:
+                result: "No timer to snooze"
+
+
+# Check Time Left on Timers
+- spec:
+    name: check_time_left
+    description: Check how much time is remaining on the timer
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.get_timers
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+        response_variable: timers
+      - if:
+          - condition: template
+            value_template: "{{ timers.result | length > 0 }}"
+        then:
+          - variables:
+              _function_result:
+                result: "You have {{ timers.result[0].expiry.text }} remaining"
+        else:
+          - variables:
+              _function_result:
+                result: "No timers found"
