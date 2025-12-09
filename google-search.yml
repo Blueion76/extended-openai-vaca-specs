@@ -1,0 +1,24 @@
+# Google Search
+# This uses a seperate Google Gemini-search enabled LLM entity in Home Assistant
+- spec:
+    name: search_google
+    description: Search Google for real-time information like current events, sports results, release dates, and other information unrelated to smart home automation.
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The search query for Google (e.g., "current president", "NBA finals results", "latest iPhone release date")
+      required:
+        - query
+  function:
+    type: script
+    sequence:
+      - action: conversation.process
+        data:
+          agent_id: conversation.gemini_search
+          text: "{{ query }}"
+        response_variable: result
+      - variables:
+          _function_result:
+            result: "{{ result.response.speech.plain.speech }}"
