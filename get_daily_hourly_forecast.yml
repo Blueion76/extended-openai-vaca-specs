@@ -1,0 +1,25 @@
+# Get Forecast
+
+- spec:
+    name: get_forecast
+    description: Retrieve the weather forecast for the home weather station. Use this to get daily or hourly predictions including temperature, conditions, precipitation, and more.
+    parameters:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - daily
+            - hourly
+          description: The type of forecast to retrieve. Choose 'daily' for day summaries or 'hourly' for detailed hourly data.
+      required:
+        - type
+  function:
+    type: script
+    sequence:
+      - service: weather.get_forecasts
+        target:
+          entity_id: weather.home_twc #modify to your weather entity
+        data:
+          type: "{{ type }}"
+        response_variable: _function_result
