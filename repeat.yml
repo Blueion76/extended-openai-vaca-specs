@@ -1,0 +1,16 @@
+# Repeat Last Said
+
+- spec:
+    name: repeat_last_said
+    description: Repeat what the View Assist device last heard
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+      - variables:
+          _function_result:
+            result: "{{ state_attr(target_device, 'last_said') | replace('I said ', '') }}"
