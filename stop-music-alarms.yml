@@ -1,0 +1,77 @@
+# Stop / Off Command
+- spec:
+    name: stop
+    description: Stop whatever is playing - stops alarms/timers first, then pauses music
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - action: view_assist.get_timers
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+          include_expired: true
+        response_variable: timers
+      - variables:
+          expired_timers: "{{ timers.result | selectattr('status', 'eq', 'expired') | list }}"
+          has_expired: "{{ expired_timers | length > 0 }}"
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+      - if:
+          - condition: template
+            value_template: "{{ has_expired }}"
+        then:
+          - action: view_assist.cancel_sound_alarm
+            data:
+              entity_id: "{{ state_attr(target_device, 'mediaplayer_device') }}"
+            continue_on_error: false
+          - action: view_assist.cancel_timer
+            data:
+              device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+          - action: view_assist.set_state
+            target:
+              entity_id: "{{ target_device }}"
+            data:
+              mode: normal
+          - variables:
+              _function_result:
+                result: "Timer stopped"
+        else:
+          - action: media_player.media_pause
+            data:
+              entity_id: "{{ state_attr(target_device, 'musicplayer_device') }}"
+            continue_on_error: false
+          - variables:
+              _function_result:
+                result: "Paused"
+
+- spec:
+    name: stop_all
+    description: Stop everything - alarms, timers, and music
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+      - action: view_assist.cancel_timer
+        data:
+          device_id: "{{ states('input_text.last_used_satellite_device_id') }}"
+      - action: view_assist.cancel_sound_alarm
+        data:
+          entity_id: "{{ state_attr(target_device, 'mediaplayer_device') }}"
+        continue_on_error: false
+      - action: media_player.media_pause
+        data:
+          entity_id: "{{ state_attr(target_device, 'musicplayer_device') }}"
+        continue_on_error: false
+      - action: view_assist.set_state
+        target:
+          entity_id: "{{ target_device }}"
+        data:
+          mode: normal
+      - variables:
+          _function_result:
+            result: "Everything stopped"
