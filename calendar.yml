@@ -1,0 +1,108 @@
+# Calendar
+- spec:
+    name: get_events
+    description: >
+      Use this function to get a list of calendar events from the family calendar.
+      Provide preset timeframes or specific start/end datetimes in YYYY-MM-DD format.
+      Returns the raw events data for natural language processing.
+      Use this tool when the user asks about upcoming events, appointments, or schedules.
+    parameters:
+      type: object
+      properties:
+        timeframe:
+          type: string
+          enum: [today, tomorrow, this_week, next_week]
+          description: Preset timeframe (optional if start_date and end_date provided)
+        start_date:
+          type: string
+          description: Start date in YYYY-MM-DD format (optional if timeframe provided)
+        end_date:
+          type: string
+          description: End date in YYYY-MM-DD format (optional if timeframe provided)
+      required:
+        - timeframe
+  function:
+    type: script
+    sequence:
+      - variables:
+          tz: "{{ now().astimezone().tzinfo }}"
+          current_date: "{{ now().strftime('%Y-%m-%d') }}"
+          start_dt_iso: >
+            {% if timeframe == 'today' %}
+              {{ current_date }}T00:00:00{{ now().strftime('%z') }}
+            {% elif timeframe == 'tomorrow' %}
+              {{ (now() + timedelta(days=1)).strftime('%Y-%m-%d') }}T00:00:00{{ now().strftime('%z') }}
+            {% elif timeframe == 'this_week' %}
+              {{ current_date }}T00:00:00{{ now().strftime('%z') }}
+            {% elif timeframe == 'next_week' %}
+              {{ (now() + timedelta(days=7)).strftime('%Y-%m-%d') }}T00:00:00{{ now().strftime('%z') }}
+            {% else %}
+              {{ start_date }}T00:00:00{{ now().strftime('%z') }}
+            {% endif %}
+          end_dt_iso: >
+            {% if timeframe == 'today' %}
+              {{ current_date }}T23:59:59{{ now().strftime('%z') }}
+            {% elif timeframe == 'tomorrow' %}
+              {{ (now() + timedelta(days=1)).strftime('%Y-%m-%d') }}T23:59:59{{ now().strftime('%z') }}
+            {% elif timeframe == 'this_week' %}
+              {{ (now() + timedelta(days=6)).strftime('%Y-%m-%d') }}T23:59:59{{ now().strftime('%z') }}
+            {% elif timeframe == 'next_week' %}
+              {{ (now() + timedelta(days=13)).strftime('%Y-%m-%d') }}T23:59:59{{ now().strftime('%z') }}
+            {% else %}
+              {{ end_date }}T23:59:59{{ now().strftime('%z') }}
+            {% endif %}
+      - service: calendar.get_events
+        data:
+          start_date_time: "{{ start_dt_iso }}"
+          end_date_time: "{{ end_dt_iso }}"
+        target:
+          entity_id:
+            - calendar.family #change to your calendar entity
+        response_variable: _function_result
+
+- spec:
+    name: create_event
+    description: >
+      Use this function to create a new event on the family calendar.
+      Provide the event summary and start/end datetimes in YYYY-MM-DDTHH:MM:SS format (e.g., "2025-11-16T09:00:00").
+      Description is optional. Returns a confirmation message.
+      Use this tool when the user wants to add appointments, reminders, or schedule items.
+    parameters:
+      type: object
+      properties:
+        summary:
+          type: string
+          description: The event title or summary (mandatory)
+        start_datetime:
+          type: string
+          description: Start datetime in YYYY-MM-DDTHH:MM:SS format (mandatory)
+        end_datetime:
+          type: string
+          description: End datetime in YYYY-MM-DDTHH:MM:SS format (mandatory)
+        description:
+          type: string
+          description: Optional event description or details
+      required:
+        - summary
+        - start_datetime
+        - end_datetime
+  function:
+    type: script
+    sequence:
+      - variables:
+          tz_suffix: "{{ now().strftime('%z') }}"
+          start_iso: "{{ start_datetime }}{{ tz_suffix }}"
+          end_iso: "{{ end_datetime }}{{ tz_suffix }}"
+          confirmation: "Event '{{ summary }}' created successfully from {{ start_datetime }} to {{ end_datetime }}."
+      - service: calendar.create_event
+        data:
+          summary: "{{ summary }}"
+          start: "{{ start_iso }}"
+          end: "{{ end_iso }}"
+          description: "{{ description | default('') }}"
+        target:
+          entity_id:
+            - calendar.family
+      - variables:
+          _function_result:
+            result: "{{ confirmation }}"
