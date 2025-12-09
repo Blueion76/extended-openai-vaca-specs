@@ -1,0 +1,30 @@
+# Play/Pause music
+- spec:
+    name: toggle_music
+    description: Resume play or pause music.
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+          music_state: "{{ states(musicplayer) }}"
+      - if:
+          - condition: template
+            value_template: "{{ music_state == 'playing' }}"
+        then:
+          - action: media_player.media_pause
+            target:
+              entity_id: "{{ musicplayer }}"
+            continue_on_error: false
+        else:
+          - action: media_player.media_play
+            target:
+              entity_id: "{{ musicplayer }}"
+            continue_on_error: false
+      - variables:
+          _function_result:
+            result: "{{ 'Music paused.' if music_state == 'playing' else 'Music resumed.' }}"
