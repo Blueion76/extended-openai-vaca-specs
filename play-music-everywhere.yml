@@ -1,0 +1,104 @@
+# Music Everywhere
+- spec:
+    name: play_music_everywhere
+    description: >
+      Play music on all View Assist music players simultaneously by grouping them together with the last used satellite as master.
+      The tool takes the following arguments: media_type, artist, album, media_id, media_description, and shuffle. 
+      media_type, media_id, and shuffle are mandatory and must always be provided. 
+      artist, album, and media_description are optional. 
+      Supports music tracks, albums, artists, playlists, radio stations, and podcasts.
+      Use this tool whenever the user requests to play music everywhere or on all speakers.
+    parameters:
+      type: object
+      properties:
+        media_type:
+          type: string
+          enum:
+            - track
+            - album
+            - artist
+            - playlist
+            - radio
+            - podcast
+          description: The type of media to play (mandatory)
+        media_id:
+          type: string
+          description: 'The media identifier (mandatory). For track/artist: use "Artist Name - Track Name" or just "Track Name". For album: "Album Name". For playlist: playlist name. For radio: radio station name or channel. For podcast: podcast name (e.g., "Joe Rogan Experience", "NPR"). Multiple items separated by semicolons.'
+        artist:
+          type: string
+          description: The artist name if relevant, otherwise empty string
+        album:
+          type: string
+          description: The album name if relevant, otherwise empty string
+        media_description:
+          type: string
+          description: Human-readable description of what to play (e.g., "the best Queen songs", "BBC Radio 1", "Joe Rogan Experience podcast")
+        shuffle:
+          type: boolean
+          default: false
+          description: Whether to shuffle the media (applicable to tracks, albums, and playlists)
+      required:
+        - media_type
+        - media_id
+        - shuffle
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          master_player: "{{ state_attr(target_device, 'musicplayer_device') if target_device else none }}"
+          all_music_players: >
+            {% set ns = namespace(players=[]) %}
+            {% for entity_id in integration_entities('view_assist') %}
+              {% if states(entity_id) not in ['unavailable', 'unknown'] %}
+                {% set mp = state_attr(entity_id, 'musicplayer_device') %}
+                {% if mp and states(mp) not in ['unavailable', 'unknown'] %}
+                  {% set ns.players = ns.players + [mp] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.players }}
+      - if:
+          - condition: template
+            value_template: "{{ master_player and all_music_players | length > 0 and states(master_player) not in ['unavailable', 'unknown'] }}"
+        then:
+          - action: media_player.join
+            target:
+              entity_id: "{{ master_player }}"
+            data:
+              group_members: "{{ all_music_players }}"
+          - action: media_player.shuffle_set
+            data:
+              shuffle: false
+            target:
+              entity_id: "{{ master_player }}"
+          - action: music_assistant.play_media
+            data:
+              media_type: "{{ media_type }}"
+              media_id: "{{ media_id }}"
+              enqueue: replace
+            target:
+              entity_id: "{{ master_player }}"
+          - if:
+              - condition: template
+                value_template: "{{ shuffle | default(false) and media_type in ['track', 'album', 'playlist'] }}"
+            then:
+              - action: media_player.shuffle_set
+                data:
+                  shuffle: true
+                target:
+                  entity_id: "{{ master_player }}"
+      - delay: '00:00:01'
+      - variables:
+          media_title: "{{ state_attr(master_player, 'media_title') | default('Unknown Title') }}"
+          media_artist: "{{ state_attr(master_player, 'media_artist') | default('') }}"
+          media_album: "{{ state_attr(master_player, 'media_album_name') | default('') }}"
+          current_media_info: >
+            {% if media_artist %}
+              Now playing "{{ media_title }}" by {{ media_artist }}
+              {% if media_album %} from the album {{ media_album }}{% endif %} on all speakers.
+            {% else %}
+              Now playing "{{ media_title }}" on all speakers.
+            {% endif %}
+          _function_result:
+            result: "{{ current_media_info }}"
