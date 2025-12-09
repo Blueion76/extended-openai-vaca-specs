@@ -1,0 +1,271 @@
+# Music Assistant
+- spec:
+    name: play_music
+    description: >
+      This script is used to play music based on a voice request via Music Assistant and View Assist.
+      The tool takes the following arguments: media_type, artist, album, media_id, media_description, 
+      area, media_player, and shuffle. media_type, media_id, and shuffle are mandatory and must always 
+      be provided. artist, album, media_description, area, and media_player are optional. 
+      Supports music tracks, albums, artists, playlists, radio stations, and podcasts.
+      For podcasts, use the episode_preference parameter to navigate through episodes.
+      Use this tool whenever the user requests to play music, radio, or podcasts.
+    parameters:
+      type: object
+      properties:
+        media_type:
+          type: string
+          enum:
+            - track
+            - album
+            - artist
+            - playlist
+            - radio
+            - podcast
+          description: The type of media to play (mandatory)
+        media_id:
+          type: string
+          description: 'The media identifier (mandatory). For track/artist: use "Artist Name - Track Name" or just "Track Name". For album: "Album Name". For playlist: playlist name. For radio: radio station name or channel. For podcast: podcast name (e.g., "Joe Rogan Experience", "NPR"). Multiple items separated by semicolons.'
+        artist:
+          type: string
+          description: The artist name if relevant, otherwise empty string
+        album:
+          type: string
+          description: The album name if relevant, otherwise empty string
+        media_description:
+          type: string
+          description: Human-readable description of what to play (e.g., "the best Queen songs", "BBC Radio 1", "Joe Rogan Experience podcast")
+        area:
+          type: array
+          items:
+            type: string
+          description: Area(s) where to play the music, radio, or podcast
+        media_player:
+          type: array
+          items:
+            type: string
+          description: Specific media player entity_id(s) to play on
+        shuffle:
+          type: boolean
+          default: false
+          description: Whether to shuffle the media (applicable to tracks, albums, and playlists)
+        episode_preference:
+          type: string
+          enum:
+            - latest
+            - oldest
+            - next
+            - previous
+          description: 'For podcasts only. "latest" plays the newest episode (default). "oldest" goes back to oldest. "next" plays the next episode. "previous" plays the previous episode.'
+          default: latest
+        enqueue:
+          type: string
+          enum:
+            - play
+            - next
+            - add
+            - replace
+          default: replace
+          description: How to add media to queue
+      required:
+        - media_type
+        - media_id
+        - shuffle
+  function:
+    type: composite
+    sequence:
+      - type: script
+        sequence:
+          - variables:
+              target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+              musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+              enqueue_value: "{{ enqueue | default('replace') }}"
+              config_entry_id: "01K9TYYEVCN4YMD5QTVFPZCXQY" # change to your Music Assistant config entry id from dev tools
+              episode_pref: "{{ episode_preference | default('latest') }}"
+          - action: media_player.unjoin
+            target:
+              entity_id: "{{ musicplayer }}"
+          - if:
+              - condition: template
+                value_template: "{{ media_type == 'podcast' }}"
+            then:
+              - if:
+                  - condition: template
+                    value_template: "{{ episode_pref in ['next', 'previous'] }}"
+                then:
+                  - action: "media_player.media_{{ episode_pref }}_track"
+                    target:
+                      entity_id: "{{ musicplayer }}"
+                else:
+                  - action: music_assistant.search
+                    data:
+                      config_entry_id: "{{ config_entry_id }}"
+                      name: "{{ media_id }}"
+                      media_type:
+                        - podcast
+                      limit: 50
+                    response_variable: podcast_search
+                  - variables:
+                      podcast_results: "{{ podcast_search.get('podcasts', []) | default([]) }}"
+                      podcast_item: >
+                        {% if podcast_results | length > 0 %}
+                          {{ podcast_results[0] }}
+                        {% else %}
+                          {}
+                        {% endif %}
+                      podcast_uri: "{{ podcast_item.get('uri', '') if podcast_item is mapping else '' }}"
+                  - action: media_player.shuffle_set
+                    data:
+                      shuffle: false
+                    target:
+                      entity_id: "{{ musicplayer }}"
+                  - if:
+                      - condition: template
+                        value_template: "{{ podcast_uri != '' }}"
+                    then:
+                      - action: music_assistant.get_library
+                        data:
+                          config_entry_id: "{{ config_entry_id }}"
+                          media_type: track
+                          limit: 1
+                          order_by: "{{ 'timestamp_added desc' if episode_pref == 'latest' else 'timestamp_added' }}"
+                          search: "{{ media_id }}"
+                        response_variable: episode_result
+                      - variables:
+                          episode_items: "{{ episode_result.get('items', []) | default([]) }}"
+                          episode_to_play: >
+                            {% if episode_items | length > 0 %}
+                              {{ episode_items[0] }}
+                            {% else %}
+                              {}
+                            {% endif %}
+                          episode_uri: "{{ episode_to_play.get('uri', '') if episode_to_play is mapping else '' }}"
+                      - if:
+                          - condition: template
+                            value_template: "{{ episode_uri != '' }}"
+                        then:
+                          - action: music_assistant.play_media
+                            data:
+                              media_type: track
+                              media_id: "{{ episode_uri }}"
+                              enqueue: "{{ enqueue_value }}"
+                            target:
+                              entity_id: "{{ musicplayer }}"
+                        else:
+                          - action: music_assistant.play_media
+                            data:
+                              media_type: podcast
+                              media_id: "{{ podcast_uri }}"
+                              enqueue: "{{ enqueue_value }}"
+                            target:
+                              entity_id: "{{ musicplayer }}"
+                    else:
+                      - action: music_assistant.play_media
+                        data:
+                          media_type: podcast
+                          media_id: "{{ media_id }}"
+                          enqueue: "{{ enqueue_value }}"
+                        target:
+                          entity_id: "{{ musicplayer }}"
+            else:
+              - action: media_player.shuffle_set
+                data:
+                  shuffle: false
+                target:
+                  entity_id: "{{ musicplayer }}"
+              - action: music_assistant.search
+                data:
+                  config_entry_id: "{{ config_entry_id }}"
+                  name: "{{ media_id }}"
+                  media_type:
+                    - "{{ media_type }}"
+                  limit: 50
+                  artist: "{{ artist | default('') }}"
+                  album: "{{ album | default('') }}"
+                response_variable: search_result
+              - variables:
+                  media_results: >
+                    {% if search_result is mapping and search_result %}
+                      {% if media_type == 'track' %}
+                        {{ search_result.get('tracks', []) | default([]) }}
+                      {% elif media_type == 'album' %}
+                        {{ search_result.get('albums', []) | default([]) }}
+                      {% elif media_type == 'artist' %}
+                        {{ search_result.get('artists', []) | default([]) }}
+                      {% elif media_type == 'radio' %}
+                        {{ search_result.get('radio', []) | default([]) }}
+                      {% elif media_type == 'playlist' %}
+                        {{ search_result.get('playlists', []) | default([]) }}
+                      {% else %}
+                        []
+                      {% endif %}
+                    {% else %}
+                      []
+                    {% endif %}
+                  media_item: >
+                    {% if media_results is iterable and media_results | length > 0 %}
+                      {{ media_results[0] }}
+                    {% else %}
+                      {}
+                    {% endif %}
+                  item_uri: "{{ media_item.get('uri', '') if media_item is mapping else '' }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ item_uri != '' }}"
+                then:
+                  - action: music_assistant.play_media
+                    data:
+                      media_type: "{{ media_type }}"
+                      media_id: "{{ item_uri }}"
+                      enqueue: "{{ enqueue_value }}"
+                    target:
+                      entity_id: "{{ musicplayer }}"
+                else:
+                  - action: music_assistant.play_media
+                    data:
+                      media_type: "{{ media_type }}"
+                      media_id: "{{ media_id }}"
+                      artist: "{{ artist | default('') }}"
+                      album: "{{ album | default('') }}"
+                      enqueue: "{{ enqueue_value }}"
+                    target:
+                      entity_id: "{{ musicplayer }}"
+          - if:
+              - condition: template
+                value_template: "{{ shuffle | default(false) and media_type in ['track', 'album', 'playlist'] }}"
+            then:
+              - action: media_player.shuffle_set
+                data:
+                  shuffle: true
+                target:
+                  entity_id: "{{ musicplayer }}"
+          - delay:
+              seconds: 2
+      - type: template
+        value_template: >-
+          {% set target_device = view_assist_entity(states('input_text.last_used_satellite_device_id')) %}
+          {% set musicplayer = state_attr(target_device, 'musicplayer_device') %}
+          {% set current_title = state_attr(musicplayer, 'media_title') %}
+          {% set current_artist = state_attr(musicplayer, 'media_artist') %}
+          {% set current_album = state_attr(musicplayer, 'media_album_name') %}
+          {% set media_duration = state_attr(musicplayer, 'media_duration') %}
+          {% set media_position = state_attr(musicplayer, 'media_position') %}
+          {% set player_state = states(musicplayer) %}
+          {% set shuffle_state = state_attr(musicplayer, 'shuffle') %}
+          {% set volume = state_attr(musicplayer, 'volume_level') %}
+          {{ {
+            'status': 'success',
+            'message': 'Now playing: ' + (current_title if current_title else 'Unknown') + 
+                      (' by ' + current_artist if current_artist else '') + 
+                      (' from ' + current_album if current_album else ''),
+            'media_info': {
+              'title': current_title,
+              'artist': current_artist,
+              'album': current_album,
+              'duration': media_duration,
+              'position': media_position,
+              'player_state': player_state,
+              'shuffle': shuffle_state,
+              'volume': (volume * 100) | round(0) if volume else None,
+              'player': musicplayer
+            }
+          } }}
