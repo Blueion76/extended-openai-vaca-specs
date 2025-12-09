@@ -1,0 +1,59 @@
+- spec:
+    name: set_shuffle_mode
+    description: Set shuffle mode on or off for the current media player.
+    parameters:
+      type: object
+      properties:
+        shuffle_enabled:
+          type: boolean
+          description: Enable or disable shuffle mode (mandatory)
+      required:
+        - shuffle_enabled
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+      - action: media_player.shuffle_set
+        data:
+          shuffle: "{{ shuffle_enabled }}"
+        target:
+          entity_id: "{{ musicplayer }}"
+        continue_on_error: false
+      - variables:
+          _function_result:
+            result: "Shuffle {{ 'enabled' if shuffle_enabled else 'disabled' }}."
+
+- spec:
+    name: set_repeat_mode
+    description: "Set repeat mode for the current media player."
+    parameters:
+      type: object
+      properties:
+        repeat_mode:
+          type: string
+          enum: ["off", "one", "all"]
+          description: "Repeat mode: off (no repeat), one (repeat current track), all (repeat entire playlist) (mandatory)"
+      required:
+        - repeat_mode
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+      - if:
+          - condition: template
+            value_template: "{{ musicplayer and states(musicplayer) not in ['unavailable', 'unknown'] }}"
+        then:
+          - action: media_player.repeat_set
+            data:
+              repeat: "{{ repeat_mode }}"
+            target:
+              entity_id: "{{ musicplayer }}"
+            continue_on_error: false
+      - variables:
+          _function_result:
+            result: "Repeat mode set to {{ repeat_mode }}."
+
