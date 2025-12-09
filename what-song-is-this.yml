@@ -1,0 +1,21 @@
+# What is this song
+- spec:
+    name: what_is_this_song
+    description: Get information about the currently playing song or media.
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: template
+    value_template: >
+      {% set target_device = view_assist_entity(states('input_text.last_used_satellite_device_id')) %}
+      {% set musicplayer = state_attr(target_device, 'musicplayer_device') %}
+      {% set current_title = state_attr(musicplayer, 'media_title') | default('Unknown') %}
+      {% set current_artist = state_attr(musicplayer, 'media_artist') | default('Unknown Artist') %}
+      {% set current_album = state_attr(musicplayer, 'media_album_name') | default('') %}
+      {% set media_content_type = state_attr(musicplayer, 'media_content_type') | default('') %}
+      {% if current_title != 'Unknown' %}
+        Now playing: {{ current_artist }} - {{ current_title }}{% if current_album %} from the album {{ current_album }}{% endif %}{% if media_content_type %} ({{ media_content_type }}){% endif %}
+      {% else %}
+        Nothing is currently playing.
+      {% endif %}
