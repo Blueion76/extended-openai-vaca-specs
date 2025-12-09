@@ -1,0 +1,53 @@
+# Next Song
+- spec:
+    name: next_track
+    description: Skip to next song
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+      - action: media_player.media_next_track
+        target:
+          entity_id: "{{ musicplayer }}"
+        continue_on_error: false
+      - variables:
+          _function_result:
+            result: "Skipping to next track"
+
+# Previous Song
+- spec:
+    name: previous_track
+    description: >
+      Skip to previous song(s) on the current music player. Optionally specify how many songs to go back (default 1).
+      Use this tool when the user requests to go back or replay previous tracks.
+    parameters:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Number of songs to skip back (default 1, minimum 1)
+          minimum: 1
+          default: 1
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          musicplayer: "{{ state_attr(target_device, 'musicplayer_device') }}"
+          skip_count: "{{ count | default(1) | int }}"
+          message: "Skipping to previous {{ skip_count }} track{{ 's' if skip_count > 1 else '' }}"
+      - repeat:
+          count: "{{ skip_count }}"
+          sequence:
+            - action: media_player.media_previous_track
+              target:
+                entity_id: "{{ musicplayer }}"
+              continue_on_error: false
+      - variables:
+          _function_result:
+            result: "{{ message }}"
