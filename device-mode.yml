@@ -1,0 +1,75 @@
+# Set Device Mode
+- spec:
+    name: set_mode
+    description: Set View Assist device mode (normal, night, hold, cycle, or do not disturb)
+    parameters:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - normal
+            - night
+            - hold
+            - cycle
+            - do not disturb
+          description: Device mode to set
+      required:
+        - mode
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+          device_type: "{{ state_attr(target_device, 'type') }}"
+      - if:
+          - condition: template
+            value_template: "{{ mode == 'do not disturb' }}"
+        then:
+          - action: view_assist.set_state
+            target:
+              entity_id: "{{ target_device }}"
+            data:
+              do_not_disturb: true
+          - variables:
+              _function_result:
+                result: "Do not disturb mode enabled"
+        else:
+          - if:
+              - condition: template
+                value_template: "{{ device_type == 'audio_only' }}"
+            then:
+              - variables:
+                  _function_result:
+                    result: "Sorry, {{ mode }} is not a valid mode for this audio-only device"
+            else:
+              - action: view_assist.set_state
+                target:
+                  entity_id: "{{ target_device }}"
+                data:
+                  mode: "{{ mode }}"
+              - variables:
+                  _function_result:
+                    result: "Setting mode to {{ mode }}"
+
+                    
+# DND Mode
+- spec:
+    name: disable_do_not_disturb
+    description: Turn off do not disturb mode
+    parameters:
+      type: object
+      properties: {}
+  function:
+    type: script
+    sequence:
+      - variables:
+          target_device: "{{ view_assist_entity(states('input_text.last_used_satellite_device_id')) }}"
+      - action: view_assist.set_state
+        target:
+          entity_id: "{{ target_device }}"
+        data:
+          do_not_disturb: false
+      - variables:
+          _function_result:
+            result: "Do not disturb mode is now off"
